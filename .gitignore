@@ -1,2 +1,3 @@
 .vs-code
 .~lock.aufgabe1.ods#
+*.pyc
