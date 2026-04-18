@@ -68,16 +68,16 @@ create unique index if not exists uq_assignment_active_device
 
 -- Departments
 insert into department (name) values
-	('IT-Service'),
-	('Logistik'),
-	('Verwaltung')
+	('IWI-Fakultaet'),
+	('BAUING-Fakultaet'),
+	('ETEC-Fakultaet'),
 on conflict (name) do nothing;
 
 -- Device Types (2-3 gefordert)
 insert into device_type (name) values
 	('Laptop'),
 	('Monitor'),
-	('Handscanner')
+	('Festplatte')
 on conflict (name) do nothing;
 
 -- Locations (2-3 gefordert)
@@ -92,11 +92,11 @@ insert into person (personnel_number, first_name, last_name, email, department_i
 select v.personnel_number, v.first_name, v.last_name, v.email, d.department_id, v.is_active
 from (
 	values
-		('P1001', 'Anna',  'Koch',   'anna.koch@example.org',   'IT-Service', true),
-		('P1002', 'Ben',   'Schulz', 'ben.schulz@example.org',  'Logistik',   true),
-		('P1003', 'Clara', 'Meier',  'clara.meier@example.org', 'Verwaltung', true),
-		('P1004', 'David', 'Nguyen', 'david.nguyen@example.org','IT-Service', true),
-		('P1005', 'Eda',   'Yilmaz', 'eda.yilmaz@example.org',  'Logistik',   true)
+		('P1001', 'Anna',  'Koch',   'anna.koch@h-ka.de',   'IWI-Fakultaet', true),
+		('P1002', 'Ben',   'Schulz', 'ben.schulz@h-ka.de',  'BAUING-Fakultaet',   true),
+		('P1003', 'Clara', 'Meier',  'clara.meier@h-ka.de', 'ETEC-Fakultaet', true),
+		('P1004', 'David', 'Nguyen', 'david.nguyen@h-ka.de','IWI-Fakultaet', true),
+		('P1005', 'Eda',   'Yilmaz', 'eda.yilmaz@h-ka.de',  'BAUING-Fakultaet',   true)
 ) as v(personnel_number, first_name, last_name, email, department_name, is_active)
 join department d on d.name = v.department_name
 on conflict (personnel_number) do nothing;
@@ -109,7 +109,7 @@ from (
 		('SN-LAP-1001', 'INV-0001', 'Laptop',      'Gebaude E', 'assigned',  true),
 		('SN-LAP-1002', 'INV-0002', 'Laptop',      'Gebaude F', 'available', true),
 		('SN-MON-2001', 'INV-0003', 'Monitor',     'Gebaude E', 'assigned',  true),
-		('SN-HS-3001',  'INV-0004', 'Handscanner', 'Gebaude H', 'assigned',  true),
+		('SN-HS-3001',  'INV-0004', 'Festplatte', 'Gebaude H', 'assigned',  true),
 		('SN-MON-2002', 'INV-0005', 'Monitor',     'Gebaude F', 'available', true)
 ) as v(serial_number, inventory_number, device_type_name, location_name, status, is_loanable)
 join device_type dt on dt.name = v.device_type_name

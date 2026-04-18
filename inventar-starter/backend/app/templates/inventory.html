@@ -9,26 +9,189 @@
       body { margin: 0; padding: 2rem; background: #f3f4f6; }
       .card { max-width: 920px; margin: 2rem auto; padding: 2rem; background: white; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.05); }
       h1, h2 { margin-top: 0; }
-      code { background: #f6f8fa; padding: .15rem .35rem; border-radius: 4px; }
-      ul { padding-left: 1.2rem; }
       .hint { color: #4b5563; }
-      .box { margin-top: 1.5rem; padding: 1rem 1.25rem; border: 1px solid #e5e7eb; border-radius: 12px; background: #f9fafb; }
+      .top-links { margin: 0 0 1rem; }
+      .top-links a { color: #1f2937; }
+      table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+      th, td { text-align: left; padding: .65rem .5rem; border-bottom: 1px solid #e5e7eb; }
+      th { font-size: .9rem; color: #374151; background: #f9fafb; }
+      .badge { display: inline-block; border-radius: 999px; padding: .2rem .6rem; font-size: .85rem; font-weight: 600; }
+      .badge.free { background: #dcfce7; color: #166534; }
+      .badge.borrowed { background: #fee2e2; color: #991b1b; }
+      .empty { margin-top: 1rem; padding: .9rem 1rem; border: 1px solid #e5e7eb; border-radius: 10px; background: #f9fafb; }
+      .btn { display: inline-block; padding: .6rem 1.2rem; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 500; }
+      .btn:hover { background: #2563eb; }
+      .btn-secondary { background: #6b7280; }
+      .btn-secondary:hover { background: #4b5563; }
+      .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+      .modal-content { background-color: #fefefe; margin: 5% auto; padding: 2rem; border-radius: 10px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+      .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+      .modal-header h2 { margin: 0; }
+      .close { font-size: 2rem; font-weight: bold; color: #aaa; cursor: pointer; }
+      .close:hover { color: #000; }
+      .form-group { margin-bottom: 1.2rem; }
+      .form-group label { display: block; margin-bottom: .4rem; font-weight: 500; color: #1f2937; }
+      .form-group input, .form-group select { width: 100%; padding: .6rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 1rem; box-sizing: border-box; }
+      .form-group input:focus, .form-group select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+      .modal-footer { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem; }
     </style>
   </head>
   <body>
     <div class="card">
-      <h1>Inventar Starter</h1>
-      <p class="hint">Diese Seite ist bewusst nur ein Platzhalter. Ihr ergänzt hier im Laufe der Übung eure Inventar-Oberfläche.</p>
+      <p class="top-links"><a href="/">Zur Startseite</a></p>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <h1>Inventar-Übersicht</h1>
+          <p class="hint">Alle Geräte mit Typ, Standort, Status und Ausleih-Hinweis.</p>
+        </div>
+        <button class="btn" onclick="openModal()">+ Gerät hinzufügen</button>
+      </div>
 
-      <div class="box">
-        <h2>Nächste Schritte</h2>
-        <ul>
-          <li>Ergänzt euer Inventar-Schema in <code>db/init/010_inventory_schema.sql</code>.</li>
-          <li>Legt Endpunkte für <code>/devices</code> und <code>/assignments</code> an.</li>
-          <li>Baut hier eine einfache Übersicht für Geräte und Ausleihen.</li>
-          <li>Nutzt den <code>grades-starter</code> als Referenz für Formulare, Templates und CRUD-Muster.</li>
-        </ul>
+      {% if devices %}
+      <table aria-label="Geräteliste">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Typ</th>
+            <th>Standort</th>
+            <th>Status</th>
+            <th>Verfügbarkeit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for device in devices %}
+          <tr>
+            <td>{{ device.device_id }}</td>
+            <td>{{ device.device_type }}</td>
+            <td>{{ device.location }}</td>
+            <td>{{ device.status }}</td>
+            <td>
+              {% if device.is_borrowed %}
+                <span class="badge borrowed">ausgeliehen</span>
+              {% else %}
+                <span class="badge free">frei</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">Keine Geräte gefunden.</div>
+      {% endif %}
+    </div>
+
+    <!-- Modal for adding a new device -->
+    <div id="addDeviceModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Gerät hinzufügen</h2>
+          <span class="close" onclick="closeModal()">&times;</span>
+        </div>
+        <form onsubmit="handleAddDevice(event)">
+          <div class="form-group">
+            <label for="serialNumber">Seriennummer:</label>
+            <input type="text" id="serialNumber" name="serial_number" required>
+          </div>
+          <div class="form-group">
+            <label for="inventoryNumber">Inventarnummer:</label>
+            <input type="text" id="inventoryNumber" name="inventory_number" required>
+          </div>
+          <div class="form-group">
+            <label for="deviceTypeId">Geräte-Typ:</label>
+            <select id="deviceTypeId" name="device_type_id" required>
+              <option value="">-- Bitte wählen --</option>
+              {% for device_type in device_types %}
+                <option value="{{ device_type.device_type_id }}">{{ device_type.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="locationId">Standort:</label>
+            <select id="locationId" name="location_id" required>
+              <option value="">-- Bitte wählen --</option>
+              {% for location in locations %}
+                <option value="{{ location.location_id }}">{{ location.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="status">Status:</label>
+            <select id="status" name="status" required>
+              <option value="">-- Bitte wählen --</option>
+              <option value="available">available</option>
+              <option value="assigned">assigned</option>
+              <option value="repair">repair</option>
+              <option value="retired">retired</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="isLoanable">Ausleihbar:</label>
+            <select id="isLoanable" name="is_loanable" required>
+              <option value="true">Ja</option>
+              <option value="false">Nein</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Abbrechen</button>
+            <button type="submit" class="btn">Speichern</button>
+          </div>
+        </form>
       </div>
     </div>
+
+    <script>
+      function openModal() {
+        document.getElementById('addDeviceModal').style.display = 'block';
+      }
+
+      function closeModal() {
+        document.getElementById('addDeviceModal').style.display = 'none';
+      }
+
+      function handleAddDevice(event) {
+        event.preventDefault();
+        
+        const formData = {
+          serial_number: document.getElementById('serialNumber').value,
+          inventory_number: document.getElementById('inventoryNumber').value,
+          device_type_id: Number(document.getElementById('deviceTypeId').value),
+          location_id: Number(document.getElementById('locationId').value),
+          status: document.getElementById('status').value,
+          is_loanable: document.getElementById('isLoanable').value === 'true'
+        };
+
+        fetch('/devices', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(formData)
+        })
+        .then(async response => {
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.detail || 'Speichern fehlgeschlagen');
+          }
+          return data;
+        })
+        .then(data => {
+          closeModal();
+          location.reload();
+        })
+        .catch(error => {
+          alert(`Fehler beim Speichern: ${error.message}`);
+          console.error('Fehler:', error);
+        });
+      }
+
+      // Modal schließen wenn außerhalb geklickt wird
+      window.onclick = function(event) {
+        const modal = document.getElementById('addDeviceModal');
+        if (event.target == modal) {
+          modal.style.display = 'none';
+        }
+      }
+    </script>
   </body>
 </html>

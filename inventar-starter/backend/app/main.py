@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request, Query, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 import os
+import json
 import psycopg
 from .db import get_conn
 from .models import DeviceCreate, AssignmentCreate, AssignmentReturn
@@ -51,7 +52,55 @@ async def index(request: Request):
 
 @app.get("/inventory", response_class=HTMLResponse)
 async def inventory_page(request: Request):
-    return templates.TemplateResponse("inventory.html", {"request": request, "title": "Inventar Starter"})
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            select d.device_id,
+                   dt.name as device_type,
+                   l.name as location,
+                   d.status,
+                   exists (
+                       select 1
+                       from assignment a
+                       where a.device_id = d.device_id
+                         and a.returned_at is null
+                   ) as is_borrowed
+            from device d
+            join device_type dt on dt.device_type_id = d.device_type_id
+            join location l on l.location_id = d.location_id
+            order by d.device_id
+            """
+        )
+        devices = list(cur.fetchall())
+
+        cur.execute(
+            """
+            select device_type_id, name
+            from device_type
+            order by name
+            """
+        )
+        device_types = list(cur.fetchall())
+
+        cur.execute(
+            """
+            select location_id, name
+            from location
+            order by name
+            """
+        )
+        locations = list(cur.fetchall())
+
+    return templates.TemplateResponse(
+        "inventory.html",
+        {
+            "request": request,
+            "title": "Inventar Starter",
+            "devices": devices,
+            "device_types": device_types,
+            "locations": locations,
+        },
+    )
 
 @app.post("/mqtt/publish")
 async def mqtt_publish(topic: str = Query(...), payload: str = Query(...)):
@@ -105,6 +154,25 @@ async def create_device(payload: DeviceCreate):
                 ),
             )
             row = cur.fetchone()
+            
+            # Send MQTT event for device creation
+            try:
+                mqtt_event = {
+                    "device_id": row["device_id"],
+                    "serial_number": row["serial_number"],
+                    "inventory_number": row["inventory_number"],
+                    "device_type_id": row["device_type_id"],
+                    "location_id": row["location_id"],
+                    "status": row["status"],
+                    "created_at": row["created_at"].isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                c = mqtt_client()
+                c.publish("inventory/devices/created", json.dumps(mqtt_event), qos=1, retain=False)
+                c.disconnect()
+            except Exception as ex:
+                print(f"MQTT publish failed: {ex}")
+            
             return row
         except psycopg.errors.UniqueViolation as ex:
             if "serial_number" in str(ex):
