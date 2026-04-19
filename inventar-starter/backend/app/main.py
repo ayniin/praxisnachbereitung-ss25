@@ -1,10 +1,13 @@
 from datetime import datetime, timezone
 from fastapi import FastAPI, Request, Query, HTTPException
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 import os
 import json
+import csv
+import io
 import psycopg
+import pandas as pd
 from .db import get_conn
 from .models import DeviceCreate, AssignmentCreate, AssignmentReturn
 import paho.mqtt.client as mqtt
@@ -26,6 +29,77 @@ def mqtt_client() -> mqtt.Client:
     c = mqtt.Client()
     c.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
     return c
+
+
+ASSIGNMENT_REPORT_COLUMNS = [
+    "assignment_id",
+    "device_id",
+    "serial_number",
+    "inventory_number",
+    "device_type",
+    "location",
+    "person_id",
+    "personnel_number",
+    "first_name",
+    "last_name",
+    "department",
+    "assigned_at",
+    "due_at",
+    "returned_at",
+    "is_active",
+    "note",
+    "return_damage_note",
+]
+
+
+def fetch_assignment_report_rows() -> list[dict]:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            select exists (
+                select 1
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'assignment'
+                  and column_name = 'return_damage_note'
+            ) as has_return_damage_note
+            """
+        )
+        has_return_damage_note = cur.fetchone()["has_return_damage_note"]
+
+        damage_note_select = "a.return_damage_note"
+        if not has_return_damage_note:
+            damage_note_select = "null::text as return_damage_note"
+
+        cur.execute(
+            f"""
+            select a.assignment_id,
+                   a.device_id,
+                   d.serial_number,
+                   d.inventory_number,
+                   dt.name as device_type,
+                   l.name as location,
+                   a.person_id,
+                   p.personnel_number,
+                   p.first_name,
+                   p.last_name,
+                   dep.name as department,
+                   a.assigned_at,
+                   a.due_at,
+                   a.returned_at,
+                   (a.returned_at is null) as is_active,
+                   a.note,
+                     {damage_note_select}
+            from assignment a
+            join device d on d.device_id = a.device_id
+            join device_type dt on dt.device_type_id = d.device_type_id
+            join location l on l.location_id = d.location_id
+            join person p on p.person_id = a.person_id
+            join department dep on dep.department_id = p.department_id
+            order by a.assigned_at desc, a.assignment_id desc
+            """
+        )
+        return list(cur.fetchall())
 
 @app.get("/health")
 async def health():
@@ -225,6 +299,43 @@ async def get_active_assignments():
             """
         )
         return list(cur.fetchall())
+
+
+@app.get("/assignments.csv")
+async def get_assignments_csv():
+    rows = fetch_assignment_report_rows()
+
+    buffer = io.StringIO()
+    writer = csv.DictWriter(
+        buffer,
+        fieldnames=ASSIGNMENT_REPORT_COLUMNS,
+        delimiter=";",
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+
+    data = buffer.getvalue().encode("utf-8-sig")
+    headers = {"Content-Disposition": 'attachment; filename="assignments.csv"'}
+    return Response(content=data, media_type="text/csv; charset=utf-8", headers=headers)
+
+
+@app.get("/assignments.xlsx")
+async def get_assignments_xlsx():
+    rows = fetch_assignment_report_rows()
+    dataframe = pd.DataFrame(rows, columns=ASSIGNMENT_REPORT_COLUMNS)
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        dataframe.to_excel(writer, index=False, sheet_name="assignments")
+
+    headers = {"Content-Disposition": 'attachment; filename="assignments.xlsx"'}
+    return Response(
+        content=output.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
 
 
 @app.post("/assignments", status_code=201)

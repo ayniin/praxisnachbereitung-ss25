@@ -7,3 +7,5 @@ python-dotenv==1.0.1
 paho-mqtt==1.6.1
 python-multipart==0.0.20
 alembic==1.14.1
+pandas==2.2.3
+openpyxl==3.1.5
