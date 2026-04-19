@@ -59,6 +59,7 @@ async def inventory_page(request: Request):
                    dt.name as device_type,
                    l.name as location,
                    d.status,
+                   a.assignment_id,
                    exists (
                        select 1
                        from assignment a
@@ -68,6 +69,7 @@ async def inventory_page(request: Request):
             from device d
             join device_type dt on dt.device_type_id = d.device_type_id
             join location l on l.location_id = d.location_id
+            left join assignment a on a.device_id = d.device_id and a.returned_at is null
             order by d.device_id
             """
         )
@@ -91,6 +93,15 @@ async def inventory_page(request: Request):
         )
         locations = list(cur.fetchall())
 
+        cur.execute(
+            """
+            select person_id, first_name, last_name
+            from person
+            order by last_name, first_name
+            """
+        )
+        people = list(cur.fetchall())
+
     return templates.TemplateResponse(
         "inventory.html",
         {
@@ -99,6 +110,7 @@ async def inventory_page(request: Request):
             "devices": devices,
             "device_types": device_types,
             "locations": locations,
+            "people": people,
         },
     )
 
@@ -124,10 +136,12 @@ async def get_devices():
                    l.name as location,
                    d.status,
                    d.is_loanable,
-                   d.created_at
+                   d.created_at,
+                   a.assignment_id
             from device d
             join device_type dt on dt.device_type_id = d.device_type_id
             join location l on l.location_id = d.location_id
+            left join assignment a on a.device_id = d.device_id and a.returned_at is null
             order by d.device_id
             """
         )
@@ -250,6 +264,20 @@ async def create_assignment(payload: AssignmentCreate):
             row = cur.fetchone()
 
             cur.execute("update device set status = 'assigned' where device_id = %s", (payload.device_id,))
+
+            mqtt_event = {
+                "assignment_id": row["assignment_id"],
+                "device_id": row["device_id"],
+                "person_id": row["person_id"],
+                "issued_at": row["issued_at"].isoformat(),
+                "due_at": row["due_at"].isoformat() if row["due_at"] else None,
+                "note": row["note"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            c = mqtt_client()
+            c.publish("inventory/assignments/created", json.dumps(mqtt_event), qos=1, retain=False)
+            c.disconnect()
+
             return row
         except psycopg.errors.UniqueViolation:
             raise HTTPException(status_code=409, detail="device already has an active assignment")
@@ -258,7 +286,7 @@ async def create_assignment(payload: AssignmentCreate):
 
 
 @app.post("/assignments/{assignment_id}/return")
-async def return_assignment(assignment_id: int, payload: AssignmentReturn):
+async def return_assignment(assignment_id: int):
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
             """
@@ -276,7 +304,7 @@ async def return_assignment(assignment_id: int, payload: AssignmentReturn):
         if row["returned_at"] is not None:
             raise HTTPException(status_code=409, detail="assignment already returned")
 
-        returned_at = to_naive_utc(payload.returned_at) if payload.returned_at else datetime.now(timezone.utc).replace(tzinfo=None)
+        returned_at = datetime.now(timezone.utc).replace(tzinfo=None)
         issued_at = to_naive_utc(row["assigned_at"])
 
         # IR-03: returned_at darf nicht vor issued_at liegen
@@ -309,4 +337,19 @@ async def return_assignment(assignment_id: int, payload: AssignmentReturn):
             (row["device_id"],),
         )
 
+        mqtt_event = {
+            "assignment_id": updated["assignment_id"],
+            "device_id": updated["device_id"],
+            "person_id": updated["person_id"],
+            "issued_at": updated["issued_at"].isoformat(),
+            "due_at": updated["due_at"].isoformat() if updated["due_at"] else None,
+            "returned_at": updated["returned_at"].isoformat() if updated["returned_at"] else None,
+            "note": updated["note"],
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        c = mqtt_client()
+        c.publish("inventory/assignments/returned", json.dumps(mqtt_event), qos=1, retain=False)
+        c.disconnect()
+
         return updated
+

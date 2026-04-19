@@ -70,7 +70,7 @@ create unique index if not exists uq_assignment_active_device
 insert into department (name) values
 	('IWI-Fakultaet'),
 	('BAUING-Fakultaet'),
-	('ETEC-Fakultaet'),
+	('ETEC-Fakultaet')
 on conflict (name) do nothing;
 
 -- Device Types (2-3 gefordert)
